@@ -76,9 +76,7 @@ async function loadSavings() {
     document.getElementById("left").textContent =
       saved >= target ? "Ziel erreicht!" : "Noch " + fmt(target - saved);
 
-    document.querySelectorAll("main > section.card").forEach((section, index) => {
-      if (index > 0) section.style.display = "none";
-    });
+    
   } catch (error) {
     document.getElementById("saved").textContent = "Laden fehlgeschlagen";
   }
