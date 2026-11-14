@@ -37,52 +37,128 @@ button{border:0;border-radius:11px;padding:13px 7px;background:#e53935;color:whi
 <div class="flex"><span id="percent">0 % geschafft</span><span id="left">Noch CHF 5’500.00</span></div>
 </section>
 <section class="card">
-<strong>Geld hinzufügen</strong>
-<div class="buttons">
-<button data-add="10">+ CHF 10</button>
-<button data-add="20">+ CHF 20</button>
-<button data-add="50">+ CHF 50</button>
+<div id="admin-box" style="display:none; margin-top:16px; border-top:1px solid #383838; padding-top:14px;">
+  <strong>Geld hinzufügen (Admin)</strong>
+  <div class="buttons">
+    <button data-add="10">+ CHF 10</button>
+    <button data-add="20">+ CHF 20</button>
+    <button data-add="50">+ CHF 50</button>
+  </div>
+  <div class="add">
+    <input id="amount" type="number" min="0.01" step="0.01" placeholder="Eigener Betrag (CHF)">
+    <button id="custom">Hinzufügen</button>
+  </div>
+  <div style="margin-top:12px; text-align:right;">
+    <button class="reset" id="reset">Auf 0 zurücksetzen</button>
+  </div>
 </div>
-<div class="add">
-<input id="amount" type="number" min="0.01" step="0.01" placeholder="Eigener Betrag (CHF)">
-<button id="custom">Hinzufügen</button>
-</div>
-<p class="note">Deine Einzahlungen werden in diesem Browser auf diesem Gerät gespeichert. Für die Nutzung auf mehreren Geräten brauchen wir später eine Online-Speicherung.</p>
 </section>
 <section class="card">
-<div class="flex"><strong>Letzte Einzahlungen</strong><button class="reset" id="reset">Zurücksetzen</button></div>
-<ul id="history"><li>Noch keine Einzahlungen</li></ul>
+  <strong>Letzte Einzahlungen</strong>
+  <ul id="history"><li>Lade Daten...</li></ul>
 </section>
 </main>
+
 <script>
+// 1. Deine Firebase-Datenbank
+const DB_URL = "https://firebasedatabase.app";
+const TARGET = 5500; // Dein Sparziel in CHF
+
+// 2. Geheimer Admin-Check (?admin=beta125 im Link)
+const params = new URLSearchParams(window.location.search);
+const isAdmin = params.get("admin") === "beta125";
+if (isAdmin) {
+  document.getElementById("admin-box").style.display = "block";
+}
+
 const fmt = n => new Intl.NumberFormat("de-CH", {
   style: "currency",
   currency: "CHF"
 }).format(n);
 
-async function loadSavings() {
-  try {
-    const response = await fetch("./savings.json?t=" + Date.now());
-    if (!response.ok) throw new Error("Datei nicht gefunden");
+let currentData = { saved: 600, history: [] };
 
-    const data = await response.json();
-    const saved = Number(data.saved) || 0;
-    const target = Number(data.goal) || 5500;
-    const pct = Math.min(100, saved / target * 100);
+// Anzeige auf der Webseite aktualisieren
+function render() {
+  const saved = Number(currentData.saved) || 0;
+  const pct = Math.min(100, (saved / TARGET) * 100);
 
-    document.getElementById("saved").textContent = fmt(saved);
-    document.getElementById("fill").style.width = pct + "%";
-    document.getElementById("percent").textContent = Math.floor(pct) + " % geschafft";
-    document.getElementById("left").textContent =
-      saved >= target ? "Ziel erreicht!" : "Noch " + fmt(target - saved);
+  document.getElementById("saved").textContent = fmt(saved);
+  document.getElementById("fill").style.width = pct + "%";
+  document.getElementById("percent").textContent = Math.floor(pct) + " % geschafft";
+  document.getElementById("left").textContent =
+    saved >= TARGET ? "Ziel erreicht!" : "Noch " + fmt(TARGET - saved);
 
-    
-  } catch (error) {
-    document.getElementById("saved").textContent = "Laden fehlgeschlagen";
+  const list = document.getElementById("history");
+  const hist = currentData.history || [];
+  if (hist.length === 0) {
+    list.innerHTML = "<li>Noch keine Einzahlungen</li>";
+  } else {
+    list.innerHTML = hist.map(item => `<li>${item}</li>`).join("");
   }
 }
+
+// Daten aus Firebase laden
+async function loadSavings() {
+  try {
+    const res = await fetch(DB_URL);
+    const data = await res.json();
+    if (data && typeof data.saved === "number") {
+      currentData = data;
+    } else {
+      // Beim allerersten Start mit 600 CHF initialisieren
+      await saveSavings(600, ["Startbetrag: CHF 600.00"]);
+    }
+    render();
+  } catch (e) {
+    document.getElementById("saved").textContent = "Verbindungsfehler";
+  }
+}
+
+// Neue Daten in Firebase speichern
+async function saveSavings(newSaved, newHistory) {
+  currentData = { saved: newSaved, history: newHistory };
+  render();
+  await fetch(DB_URL, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(currentData)
+  });
+}
+
+// Betrag hinzufügen
+async function addMoney(val) {
+  const amount = Number(val);
+  if (!amount || amount <= 0) return;
+
+  const datum = new Date().toLocaleDateString("de-CH");
+  const eintrag = `+ ${fmt(amount)} (${datum})`;
+  const neueListe = [eintrag, ...(currentData.history || [])].slice(0, 10); // Zeigt die letzten 10 Einzahlungen
+
+  await saveSavings(currentData.saved + amount, neueListe);
+}
+
+// Klicks auf +10, +20, +50
+document.querySelectorAll("button[data-add]").forEach(btn => {
+  btn.addEventListener("click", () => addMoney(btn.getAttribute("data-add")));
+});
+
+// Klick auf eigenen Betrag
+document.getElementById("custom").addEventListener("click", () => {
+  const input = document.getElementById("amount");
+  addMoney(input.value);
+  input.value = "";
+});
+
+// Klick auf Zurücksetzen
+document.getElementById("reset").addEventListener("click", async () => {
+  if (confirm("Wirklich alles auf CHF 0 zurücksetzen?")) {
+    await saveSavings(0, []);
+  }
+});
 
 loadSavings();
 </script>
 </body>
 </html>
+
