@@ -55,26 +55,36 @@ button{border:0;border-radius:11px;padding:13px 7px;background:#e53935;color:whi
 </section>
 </main>
 <script>
-const TARGET=5500, KEY="beta-tracker-data-v2";
-let data={saved:0,history:[]};
-try{const old=JSON.parse(localStorage.getItem(KEY));if(old && typeof old.saved==="number" && Array.isArray(old.history))data=old;}catch(e){}
-const fmt=n=>new Intl.NumberFormat("de-CH",{style:"currency",currency:"CHF"}).format(n);
-function render(){
- const pct=Math.min(100,data.saved/TARGET*100);
- document.getElementById("saved").textContent=fmt(data.saved);
- document.getElementById("fill").style.width=pct+"%";
- document.getElementById("percent").textContent=Math.floor(pct)+" % geschafft";
- document.getElementById("left").textContent=data.saved>=TARGET?"Ziel erreicht!":"Noch "+fmt(TARGET-data.saved);
- const list=document.getElementById("history");list.innerHTML="";
- if(!data.history.length){list.innerHTML="<li>Noch keine Einzahlungen</li>";}
- data.history.slice(0,15).forEach(x=>{const li=document.createElement("li");li.textContent="+"+fmt(x.amount)+" · "+x.date;list.appendChild(li);});
+const fmt = n => new Intl.NumberFormat("de-CH", {
+  style: "currency",
+  currency: "CHF"
+}).format(n);
+
+async function loadSavings() {
+  try {
+    const response = await fetch("./savings.json?t=" + Date.now());
+    if (!response.ok) throw new Error("Datei nicht gefunden");
+
+    const data = await response.json();
+    const saved = Number(data.saved) || 0;
+    const target = Number(data.goal) || 5500;
+    const pct = Math.min(100, saved / target * 100);
+
+    document.getElementById("saved").textContent = fmt(saved);
+    document.getElementById("fill").style.width = pct + "%";
+    document.getElementById("percent").textContent = Math.floor(pct) + " % geschafft";
+    document.getElementById("left").textContent =
+      saved >= target ? "Ziel erreicht!" : "Noch " + fmt(target - saved);
+
+    document.querySelectorAll("main > section.card").forEach((section, index) => {
+      if (index > 0) section.style.display = "none";
+    });
+  } catch (error) {
+    document.getElementById("saved").textContent = "Laden fehlgeschlagen";
+  }
 }
-function add(n){if(!Number.isFinite(n)||n<=0){alert("Bitte gib einen Betrag über 0 ein.");return;}data.saved+=n;data.history.unshift({amount:n,date:new Date().toLocaleDateString("de-CH")});try{localStorage.setItem(KEY,JSON.stringify(data));}catch(e){}render();}
-document.querySelectorAll("[data-add]").forEach(b=>b.addEventListener("click",()=>add(Number(b.dataset.add))));
-document.getElementById("custom").addEventListener("click",()=>{const input=document.getElementById("amount");add(Number(input.value));input.value="";});
-document.getElementById("amount").addEventListener("keydown",e=>{if(e.key==="Enter")document.getElementById("custom").click();});
-document.getElementById("reset").addEventListener("click",()=>{if(confirm("Alle Einzahlungen auf diesem Gerät zurücksetzen?")){data={saved:0,history:[]};localStorage.removeItem(KEY);render();}});
-render();
+
+loadSavings();
 </script>
 </body>
 </html>
